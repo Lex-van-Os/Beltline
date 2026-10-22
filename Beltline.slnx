@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Beltline.BagTracking.Domain/Beltline.BagTracking.Domain.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Beltline.BagTracking.Domain.Tests/Beltline.BagTracking.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
