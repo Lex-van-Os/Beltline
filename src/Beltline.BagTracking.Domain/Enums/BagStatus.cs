@@ -1,4 +1,4 @@
-namespace Beltline.BagTracking.Domain.Models;
+namespace Beltline.BagTracking.Domain.Enums;
 
 public enum BagStatus
 {
@@ -10,7 +10,6 @@ public enum BagStatus
     ScreeningInProgress,
     ScreeningCleared,
     Sorting,
-    Sorted,
     AwaitingLoading,
     LoadAuthorized,
     Loading,
