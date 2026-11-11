@@ -1,3 +1,4 @@
+using Beltline.BagTracking.Domain.Enums;
 using Beltline.BagTracking.Domain.Models;
 using Shouldly;
 

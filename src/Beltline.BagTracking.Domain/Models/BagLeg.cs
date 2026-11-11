@@ -1,3 +1,5 @@
+using Beltline.BagTracking.Domain.Enums;
+
 namespace Beltline.BagTracking.Domain.Models;
 
 public class BagLeg
@@ -21,5 +23,11 @@ public class BagLeg
 
     public BagStatus Status { get; private set; }
 
-    public int Version { get; internal set; }
+    public int Version { get; private set; }
+
+    internal void ChangeStatus(BagStatus bagStatus)
+    {
+        this.Status = bagStatus;
+        this.Version++;
+    }
 }
