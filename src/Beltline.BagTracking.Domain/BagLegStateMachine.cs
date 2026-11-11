@@ -4,7 +4,7 @@ using Beltline.BagTracking.Domain.Models;
 
 namespace Beltline.BagTracking.Domain;
 
-public class BagLegStateMachine
+public static class BagLegStateMachine
 {
     private static readonly BagStatus[] HappyPath =
     [
@@ -46,8 +46,8 @@ public class BagLegStateMachine
     
     public static bool Apply(BagLeg bagLeg, ScreeningCompleted screeningCompletedFact)
     {
-        return screeningCompletedFact.Result == ScreeningResult.Cleared && TryAdvance(bagLeg, BagStatus.ScreeningCleared);
         // Currently return nothing. A later version will include logic for the SecurityHold functionality.
+        return screeningCompletedFact.Result == ScreeningResult.Cleared && TryAdvance(bagLeg, BagStatus.ScreeningCleared);
     }
 
     private static bool TryAdvance(BagLeg bagLeg, BagStatus status)
@@ -55,7 +55,7 @@ public class BagLegStateMachine
         // Case: Incoming status is not later than current status; do nothing.
         if (HappyPath.IndexOf(bagLeg.Status) >= HappyPath.IndexOf(status))
             return false;
-        // Case: Current bag status is not in list of statusses to change; do nothing.
+        // Case: Current bag status is not in list of statuses to change; do nothing.
         else if (HappyPath.IndexOf(bagLeg.Status) == -1)
             return false;
             
