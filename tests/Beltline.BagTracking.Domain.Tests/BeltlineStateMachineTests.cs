@@ -7,6 +7,9 @@ namespace Beltline.BagTracking.Domain.Tests;
 
 public class BeltlineStateMachineTests
 {
+    // Tests to add for this issue:
+    // 1. 
+    
     private const string TagNumberValue = "0771927081";
     private const int FlightId = 42;
 
