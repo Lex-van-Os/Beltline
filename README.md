@@ -25,10 +25,10 @@ The lifecycle follows the IATA 753 tracking points. In v1, a bag moves through:
 
 ```
 Bag registered → Dropped off → Inducted → Screening pending → Screening in progress → Screening cleared
-  → Sorting → Sorted → Awaiting loading → Load authorized → Loading → Loaded → Departed
+  → Sorting → Awaiting loading → Load authorized → Loading → Loaded → Departed
 ```
 
-Alternative paths include **Security hold**, **Offloading** (for example a passenger who did not board) and a departure sweep for bags that did not make the flight.
+Alternative paths include **Security hold**, **Offloading** (for example a passenger who did not board) and a departure sweep for bags that did not make the flight. See [Bag lifecycle](docs/domain/bag-lifecycle.md) for the full status diagram and which simulation fact leads to which status.
 
 **Final states:** `Departed`, `Missed`, `Offloaded` (with reason), `Missing`.
 
