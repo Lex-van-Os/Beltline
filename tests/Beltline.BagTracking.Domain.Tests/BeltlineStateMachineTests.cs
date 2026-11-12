@@ -28,7 +28,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(checkpoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
         changed.ShouldBeTrue();
@@ -48,7 +48,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(checkpoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
         changed.ShouldBeFalse();
@@ -70,7 +70,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(Checkpoint.BagDrop));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
 
         // Assert
         changed.ShouldBeFalse();
@@ -81,16 +81,16 @@ public class BeltlineStateMachineTests
     [Fact]
     public void Apply_BagScannedSkippingStatuses_AdvancesStatus()
     {
-        // Arrange
+        // Arrange: the screening scans were missed, the bag is seen again at the sorter
         var bagLeg = CreateBagLeg(BagStatus.Inducted);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
 
         // Assert
         changed.ShouldBeTrue();
-        bagLeg.Status.ShouldBe(BagStatus.Loading);
+        bagLeg.Status.ShouldBe(BagStatus.Sorting);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
 
@@ -153,6 +153,9 @@ public class BeltlineStateMachineTests
 
         return bagLeg;
     }
+
+    // A flight for which loading has not opened yet
+    private static FlightHandling CreateFlightHandling() => new(FlightId);
 
     private static BagScanned CreateBagScanned(Checkpoint checkpoint) =>
         new() { TagNumber = TagNumberValue, FlightId = FlightId, Checkpoint = checkpoint };
