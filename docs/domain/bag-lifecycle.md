@@ -66,7 +66,7 @@ stateDiagram-v2
     Missing --> [*]
 
     classDef planned stroke-dasharray: 5 5
-    class LoadAuthorized, Loaded, SecurityHold, Offloading, Departed, Offloaded, Missed, Missing planned
+    class Loaded, SecurityHold, Offloading, Departed, Offloaded, Missed, Missing planned
 ```
 
 ### Departure
@@ -121,8 +121,8 @@ flowchart LR
     ScreeningFailed -.-> StatusSecurityHold([SecurityHold])
     SorterEntry --> StatusSorting([Sorting])
     MakeUp -->|loading not open| StatusAwaitingLoading([AwaitingLoading])
-    MakeUp -.->|loading open| StatusLoadAuthorized([LoadAuthorized])
-    LoadingOpened -.->|every AwaitingLoading bag of the flight| StatusLoadAuthorized
+    MakeUp -->|loading open| StatusLoadAuthorized([LoadAuthorized])
+    LoadingOpened -->|every AwaitingLoading bag of the flight| StatusLoadAuthorized
     LoadingPoint -->|only from LoadAuthorized| StatusLoading([Loading])
 ```
 
@@ -133,7 +133,7 @@ flowchart LR
 | Part | Status |
 | --- | --- |
 | Happy path from `BagRegistered` to `AwaitingLoading`, and `LoadingPoint` → `Loading` | Implemented (#7) |
-| `LoadingOpened`, `LoadAuthorized`, and loading only from `LoadAuthorized` | Planned (#8) |
+| `LoadingOpened`, `LoadAuthorized`, and loading only from `LoadAuthorized` | Implemented (#8) |
 | `ConfirmLoaded` → `Loaded` | Planned |
 | `SecurityHold` and its resolution | Planned |
 | `Offloading` → `Offloaded` | Planned |

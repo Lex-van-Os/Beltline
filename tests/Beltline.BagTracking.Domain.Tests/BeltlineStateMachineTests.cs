@@ -9,6 +9,8 @@ public class BeltlineStateMachineTests
 {
     private const string TagNumberValue = "0771927081";
     private const int FlightId = 42;
+    private const int OtherFlightId = 43;
+    private static readonly DateTimeOffset LoadingOpenedTime = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
     [Theory]
     [InlineData(Checkpoint.BagDrop, BagStatus.BagRegistered, BagStatus.DroppedOff)]
@@ -25,7 +27,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(checkpoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
         changed.ShouldBeTrue();
@@ -45,7 +47,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(checkpoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
         changed.ShouldBeFalse();
@@ -67,7 +69,7 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(Checkpoint.BagDrop));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
 
         // Assert
         changed.ShouldBeFalse();
@@ -78,16 +80,16 @@ public class BeltlineStateMachineTests
     [Fact]
     public void Apply_BagScannedSkippingStatuses_AdvancesStatus()
     {
-        // Arrange
+        // Arrange: the screening scans were missed, the bag is seen again at the sorter
         var bagLeg = CreateBagLeg(BagStatus.Inducted);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
 
         // Assert
         changed.ShouldBeTrue();
-        bagLeg.Status.ShouldBe(BagStatus.Loading);
+        bagLeg.Status.ShouldBe(BagStatus.Sorting);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
 
@@ -140,16 +142,162 @@ public class BeltlineStateMachineTests
         bagLeg.Version.ShouldBe(previousVersion);
     }
 
-    // Puts the BagLeg directly in the given status, so each test starts from a known point
-    private static BagLeg CreateBagLeg(BagStatus status)
+    [Fact]
+    public void Apply_BagScannedAtMakeUpWithLoadingOpen_AdvancesStatusToLoadAuthorized()
     {
-        var bagLeg = new BagLeg(new TagNumber(TagNumberValue), FlightId);
+        // Arrange
+        var flightHandling = CreateOpenFlightHandling();
+        var bagLeg = CreateBagLeg(BagStatus.Sorting);
+        var previousVersion = bagLeg.Version;
+
+        // Act
+        var changed = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp));
+
+        // Assert
+        changed.ShouldBeTrue();
+        bagLeg.Status.ShouldBe(BagStatus.LoadAuthorized);
+        bagLeg.Version.ShouldBe(previousVersion + 1);
+    }
+
+    [Theory]
+    [InlineData(BagStatus.Inducted)]
+    [InlineData(BagStatus.Sorting)]
+    [InlineData(BagStatus.AwaitingLoading)]
+    public void Apply_BagScannedAtLoadingPointWithoutLoadAuthorized_LeavesBagLegUnchanged(BagStatus currentStatus)
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(currentStatus);
+        var previousVersion = bagLeg.Version;
+
+        // Act
+        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
+
+        // Assert
+        changed.ShouldBeFalse();
+        bagLeg.Status.ShouldBe(currentStatus);
+        bagLeg.Version.ShouldBe(previousVersion);
+    }
+
+    [Fact]
+    public void Apply_BagScannedWithFlightHandlingOfOtherFlight_ThrowsArgumentException()
+    {
+        // Arrange
+        var flightHandling = new FlightHandling(OtherFlightId);
+        var bagLeg = CreateBagLeg(BagStatus.Sorting);
+
+        // Act and assert
+        Should.Throw<ArgumentException>(() =>
+            BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp)));
+        bagLeg.Status.ShouldBe(BagStatus.Sorting);
+    }
+
+    [Fact]
+    public void Apply_LoadingOpened_OpensLoadingAtFactTime()
+    {
+        // Arrange
+        var flightHandling = CreateFlightHandling();
+
+        // Act
+        var changed = BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), []);
+
+        // Assert
+        changed.ShouldBeTrue();
+        flightHandling.IsLoadingOpen.ShouldBeTrue();
+        flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
+    }
+
+    [Fact]
+    public void Apply_LoadingOpened_AuthorizesOnlyAwaitingLoadingBags()
+    {
+        // Arrange
+        var awaitingBagLegs = new[] { CreateBagLeg(BagStatus.AwaitingLoading), CreateBagLeg(BagStatus.AwaitingLoading) };
+        var otherBagLegs = new[] { CreateBagLeg(BagStatus.Sorting), CreateBagLeg(BagStatus.Loading) };
+        var awaitingVersions = awaitingBagLegs.Select(bagLeg => bagLeg.Version).ToArray();
+        var otherVersions = otherBagLegs.Select(bagLeg => bagLeg.Version).ToArray();
+
+        // Act
+        BagLegStateMachine.Apply(CreateFlightHandling(), CreateLoadingOpened(FlightId), [..awaitingBagLegs, ..otherBagLegs]);
+
+        // Assert
+        awaitingBagLegs.Select(bagLeg => bagLeg.Status).ShouldAllBe(status => status == BagStatus.LoadAuthorized);
+        awaitingBagLegs.Select(bagLeg => bagLeg.Version).ShouldBe(awaitingVersions.Select(version => version + 1));
+        otherBagLegs.Select(bagLeg => bagLeg.Status).ShouldBe([BagStatus.Sorting, BagStatus.Loading]);
+        otherBagLegs.Select(bagLeg => bagLeg.Version).ShouldBe(otherVersions);
+    }
+
+    [Fact]
+    public void Apply_LoadingOpenedTwice_LeavesFlightAndBagLegsUnchanged()
+    {
+        // Arrange
+        var flightHandling = CreateOpenFlightHandling();
+        var bagLeg = CreateBagLeg(BagStatus.AwaitingLoading);
+        var previousVersion = bagLeg.Version;
+        var duplicateFact = CreateLoadingOpened(FlightId, LoadingOpenedTime.AddHours(1));
+
+        // Act
+        var changed = BagLegStateMachine.Apply(flightHandling, duplicateFact, [bagLeg]);
+
+        // Assert
+        changed.ShouldBeFalse();
+        flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
+        bagLeg.Status.ShouldBe(BagStatus.AwaitingLoading);
+        bagLeg.Version.ShouldBe(previousVersion);
+    }
+
+    [Fact]
+    public void Apply_LoadingOpenedForOtherFlight_ThrowsArgumentException()
+    {
+        // Arrange
+        var flightHandling = CreateFlightHandling();
+
+        // Act and assert
+        Should.Throw<ArgumentException>(() =>
+            BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(OtherFlightId), []));
+        flightHandling.IsLoadingOpen.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Apply_LoadingOpenedWithBagLegOfOtherFlight_ThrowsAndLeavesEverythingUnchanged()
+    {
+        // Arrange: the bag of this flight comes first, so a half-finished loop would already have changed it
+        var flightHandling = CreateFlightHandling();
+        var bagLeg = CreateBagLeg(BagStatus.AwaitingLoading);
+        var otherFlightBagLeg = CreateBagLeg(BagStatus.AwaitingLoading, OtherFlightId);
+        var previousVersion = bagLeg.Version;
+
+        // Act and assert
+        Should.Throw<ArgumentException>(() =>
+            BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), [bagLeg, otherFlightBagLeg]));
+        flightHandling.IsLoadingOpen.ShouldBeFalse();
+        bagLeg.Status.ShouldBe(BagStatus.AwaitingLoading);
+        bagLeg.Version.ShouldBe(previousVersion);
+    }
+
+    // Puts the BagLeg directly in the given status, so each test starts from a known point
+    private static BagLeg CreateBagLeg(BagStatus status, int flightId = FlightId)
+    {
+        var bagLeg = new BagLeg(new TagNumber(TagNumberValue), flightId);
 
         if (status != BagStatus.BagRegistered)
             bagLeg.ChangeStatus(status);
 
         return bagLeg;
     }
+
+    // A flight for which loading has not opened yet
+    private static FlightHandling CreateFlightHandling() => new(FlightId);
+
+    // A flight for which loading opened at LoadingOpenedTime
+    private static FlightHandling CreateOpenFlightHandling()
+    {
+        var flightHandling = new FlightHandling(FlightId);
+        flightHandling.SetLoadingOpened(LoadingOpenedTime);
+
+        return flightHandling;
+    }
+
+    private static LoadingOpened CreateLoadingOpened(int flightId, DateTimeOffset? occurredAt = null) =>
+        new() { FlightId = flightId, OccurredAt = occurredAt ?? LoadingOpenedTime };
 
     private static BagScanned CreateBagScanned(Checkpoint checkpoint) =>
         new() { TagNumber = TagNumberValue, FlightId = FlightId, Checkpoint = checkpoint };

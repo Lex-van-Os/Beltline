@@ -489,4 +489,7 @@ $RECYCLE.BIN/
 .vibe-wise/
 
 # Personal sketches and drafts (local only)
-freestyle/
+notes/
+
+# Obsidian vault settings (the repository root is opened as a vault)
+.obsidian/
