@@ -23,12 +23,10 @@ public static class BagLegStateMachine
     
     public static BagLegHistoryEntry Apply(FlightHandling flightHandling, BagLeg bagLeg, BagScanned scannedFact)
     {
-        var previousBagLegStatus = bagLeg.Status;
-        
         if (flightHandling.FlightId != bagLeg.FlightId)
             throw new ArgumentException("Flight information flight id does not correspond to the bag flight id");
         
-        BagStatus bagStatus = scannedFact.Checkpoint switch
+        BagStatus targetStatus = scannedFact.Checkpoint switch
         {
             Checkpoint.BagDrop => BagStatus.DroppedOff,
             Checkpoint.Induction => BagStatus.Inducted,
@@ -40,55 +38,31 @@ public static class BagLegStateMachine
             _ => throw new ArgumentOutOfRangeException(nameof(scannedFact))
         };
 
-        var result = TryAdvance(bagLeg, bagStatus);
-
-        var scanOutcomeReason = result.Reason;
-        var scanOutcome = scanOutcomeReason.ToOutcome();
-        var historyEntry = new BagLegHistoryEntry(bagLeg.Id, DomainFact.BagScanned, scannedFact.OccurredAt, previousBagLegStatus, bagLeg.Status, bagLeg.Version, scanOutcome, scanOutcomeReason, checkpoint: scannedFact.Checkpoint);
-
-        bagLeg.AddBagLegHistoryEntry(historyEntry);
-
-        return historyEntry;
+        var previousStatus = bagLeg.Status;
+        var result = TryAdvance(bagLeg, targetStatus);
+        return RecordHistoryEntry(bagLeg, previousStatus, scannedFact, DomainFact.BagScanned, result.Reason, checkpoint: scannedFact.Checkpoint);
     }
 
     public static BagLegHistoryEntry Apply(BagLeg bagLeg, ScreeningStarted screeningStartedFact)
     {
-        var previousBagLegStatus = bagLeg.Status;
-        const BagStatus bagStatus = BagStatus.ScreeningInProgress;
-        
-        var result = TryAdvance(bagLeg, bagStatus);
-        
-        var scanOutcomeReason = result.Reason;
-        var scanOutcome = scanOutcomeReason.ToOutcome();
-        var historyEntry = new BagLegHistoryEntry(bagLeg.Id, DomainFact.ScreeningStarted, screeningStartedFact.OccurredAt, previousBagLegStatus, bagLeg.Status, bagLeg.Version, scanOutcome, scanOutcomeReason);
-
-        bagLeg.AddBagLegHistoryEntry(historyEntry);
-        
-        return historyEntry;
+        var previousStatus = bagLeg.Status;
+        var result = TryAdvance(bagLeg, BagStatus.ScreeningInProgress);
+        return RecordHistoryEntry(bagLeg, previousStatus, screeningStartedFact, DomainFact.ScreeningStarted, result.Reason);
     }
-    
+
     public static BagLegHistoryEntry Apply(BagLeg bagLeg, ScreeningCompleted screeningCompletedFact)
     {
-        var previousBagLegStatus = bagLeg.Status;
-        
+        // Security hold is a later issue: a failed screening is recorded, but does not change the bag yet.
         if (screeningCompletedFact.Result == ScreeningResult.Failed)
         {
-            var failedHistoryEntry =  new BagLegHistoryEntry(bagLeg.Id, DomainFact.ScreeningCompleted, screeningCompletedFact.OccurredAt, previousBagLegStatus, bagLeg.Status, bagLeg.Version, ScanOutcome.Ignored, OutcomeReason.NotSupportedYet, screeningResult: screeningCompletedFact.Result);
-            
-            bagLeg.AddBagLegHistoryEntry(failedHistoryEntry);
-            
-            return failedHistoryEntry;
+            return RecordHistoryEntry(bagLeg, bagLeg.Status, screeningCompletedFact, DomainFact.ScreeningCompleted,
+                OutcomeReason.NotSupportedYet, screeningResult: screeningCompletedFact.Result);
         }
-        
-        var result = TryAdvance(bagLeg, BagStatus.ScreeningCleared);
-        
-        var scanOutcomeReason = result.Reason;
-        var scanOutcome = scanOutcomeReason.ToOutcome();
-        var historyEntry = new BagLegHistoryEntry(bagLeg.Id, DomainFact.ScreeningCompleted, screeningCompletedFact.OccurredAt, previousBagLegStatus, bagLeg.Status, bagLeg.Version, scanOutcome, scanOutcomeReason, screeningResult: screeningCompletedFact.Result);
 
-        bagLeg.AddBagLegHistoryEntry(historyEntry);
-        
-        return historyEntry;
+        var previousStatus = bagLeg.Status;
+        var result = TryAdvance(bagLeg, BagStatus.ScreeningCleared);
+        return RecordHistoryEntry(bagLeg, previousStatus, screeningCompletedFact, DomainFact.ScreeningCompleted,
+            result.Reason, screeningResult: screeningCompletedFact.Result);
     }
 
     public static IReadOnlyCollection<BagLegHistoryEntry> Apply(FlightHandling flightHandling, LoadingOpened loadingOpenedFact, IReadOnlyCollection<BagLeg> flightBags)
@@ -108,12 +82,9 @@ public static class BagLegStateMachine
 
         foreach (var flightBag in flightBags.Where(flightBag => flightBag.Status == BagStatus.AwaitingLoading))
         {
+            var previousStatus = flightBag.Status;
             flightBag.ChangeStatus(BagStatus.LoadAuthorized);
-            
-            var historyEntry = new BagLegHistoryEntry(flightBag.Id, DomainFact.LoadingOpened, loadingOpenedFact.OccurredAt, BagStatus.AwaitingLoading, BagStatus.LoadAuthorized, flightBag.Version, ScanOutcome.Applied, OutcomeReason.None);
-            
-            flightBag.AddBagLegHistoryEntry(historyEntry);
-            modifiedEntries.Add(historyEntry);
+            modifiedEntries.Add(RecordHistoryEntry(flightBag, previousStatus, loadingOpenedFact, DomainFact.LoadingOpened, OutcomeReason.None));
         }
         
         flightHandling.SetLoadingOpened(loadingOpenedFact.OccurredAt);
@@ -146,5 +117,17 @@ public static class BagLegStateMachine
         bagLeg.ChangeStatus(status);
 
         return new ScanOutcomeResult(OutcomeReason.None);
+    }
+
+    private static BagLegHistoryEntry RecordHistoryEntry(
+        BagLeg bagLeg, BagStatus previousStatus, FactBase fact, DomainFact factType, OutcomeReason reason,
+        Checkpoint? checkpoint = null, ScreeningResult? screeningResult = null)
+    {
+        var historyEntry = new BagLegHistoryEntry(bagLeg.Id, factType, fact.OccurredAt, previousStatus,
+            bagLeg.Status, bagLeg.Version, reason.ToOutcome(), reason, checkpoint, screeningResult);
+
+        bagLeg.AddBagLegHistoryEntry(historyEntry);
+
+        return historyEntry;
     }
 }

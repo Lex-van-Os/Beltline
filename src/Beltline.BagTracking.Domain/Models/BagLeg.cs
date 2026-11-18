@@ -25,7 +25,8 @@ public class BagLeg
 
     public int Version { get; private set; }
 
-    private List<BagLegHistoryEntry> BagLegHistory { get; } = [];
+    private readonly List<BagLegHistoryEntry> _bagLegHistory = [];
+    public IReadOnlyList<BagLegHistoryEntry> BagLegHistory => _bagLegHistory;
 
     internal void ChangeStatus(BagStatus bagStatus)
     {
@@ -35,6 +36,6 @@ public class BagLeg
 
     internal void AddBagLegHistoryEntry(BagLegHistoryEntry bagLegHistoryEntry)
     {
-        BagLegHistory.Add(bagLegHistoryEntry);
+        _bagLegHistory.Add(bagLegHistoryEntry);
     }
 }
