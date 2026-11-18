@@ -27,52 +27,56 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(expectedStatus);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
 
     [Theory]
-    [InlineData(Checkpoint.Induction, BagStatus.Inducted)] // Same status (duplicate scan)
-    [InlineData(Checkpoint.BagDrop, BagStatus.Sorting)] // Earlier status
-    [InlineData(Checkpoint.MakeUp, BagStatus.Loading)] // Earlier status
+    [InlineData(Checkpoint.Induction, BagStatus.Inducted, OutcomeReason.AlreadyInStatus)] // Same status (duplicate scan)
+    [InlineData(Checkpoint.BagDrop, BagStatus.Sorting, OutcomeReason.EarlierThanCurrentStatus)]
+    [InlineData(Checkpoint.MakeUp, BagStatus.Loading, OutcomeReason.EarlierThanCurrentStatus)]
     public void Apply_BagScannedWithCheckpointNotLater_LeavesBagLegUnchanged(
-        Checkpoint checkpoint, BagStatus currentStatus)
+        Checkpoint checkpoint, BagStatus currentStatus, OutcomeReason expectedReason)
     {
         // Arrange
         var bagLeg = CreateBagLeg(currentStatus);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Ignored);
+        historyEntry.Reason.ShouldBe(expectedReason);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
 
     [Theory]
-    [InlineData(BagStatus.SecurityHold)]
-    [InlineData(BagStatus.Offloading)]
-    [InlineData(BagStatus.Departed)]
-    [InlineData(BagStatus.Offloaded)]
-    [InlineData(BagStatus.Missed)]
-    [InlineData(BagStatus.Missing)]
-    public void Apply_BagScannedWithStatusOutsideHappyPath_LeavesBagLegUnchanged(BagStatus currentStatus)
+    [InlineData(BagStatus.SecurityHold, OutcomeReason.CurrentStatusNotOnHappyPath)]
+    [InlineData(BagStatus.Offloading, OutcomeReason.CurrentStatusNotOnHappyPath)]
+    [InlineData(BagStatus.Departed, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Offloaded, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Missed, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Missing, OutcomeReason.CurrentStatusFinal)]
+    public void Apply_BagScannedWithStatusOutsideHappyPath_LeavesBagLegUnchanged(
+        BagStatus currentStatus, OutcomeReason expectedReason)
     {
         // Arrange
         var bagLeg = CreateBagLeg(currentStatus);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Refused);
+        historyEntry.Reason.ShouldBe(expectedReason);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -85,10 +89,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.Sorting);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -102,10 +107,11 @@ public class BeltlineStateMachineTests
         var fact = new ScreeningStarted { TagNumber = TagNumberValue, FlightId = FlightId };
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, fact);
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, fact);
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningInProgress);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -118,10 +124,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Cleared));
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Cleared));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningCleared);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -134,10 +141,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Failed));
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Failed));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Ignored);
+        historyEntry.Reason.ShouldBe(OutcomeReason.NotSupportedYet);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningInProgress);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -151,10 +159,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp));
+        var historyEntry = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.LoadAuthorized);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -170,10 +179,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Refused);
+        historyEntry.Reason.ShouldBe(OutcomeReason.NotAuthorizedForLoading);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -198,10 +208,10 @@ public class BeltlineStateMachineTests
         var flightHandling = CreateFlightHandling();
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), []);
+        var historyEntries = BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), []);
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntries.ShouldBeEmpty();
         flightHandling.IsLoadingOpen.ShouldBeTrue();
         flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
     }
@@ -235,10 +245,10 @@ public class BeltlineStateMachineTests
         var duplicateFact = CreateLoadingOpened(FlightId, LoadingOpenedTime.AddHours(1));
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, duplicateFact, [bagLeg]);
+        var historyEntries = BagLegStateMachine.Apply(flightHandling, duplicateFact, [bagLeg]);
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntries.ShouldBeEmpty();
         flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
         bagLeg.Status.ShouldBe(BagStatus.AwaitingLoading);
         bagLeg.Version.ShouldBe(previousVersion);

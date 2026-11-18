@@ -71,7 +71,6 @@ public static class BagLegStateMachine
     {
         var previousBagLegStatus = bagLeg.Status;
         
-        // Currently return nothing. A later version will include logic for the SecurityHold functionality.
         if (screeningCompletedFact.Result == ScreeningResult.Failed)
         {
             var failedHistoryEntry =  new BagLegHistoryEntry(bagLeg.Id, DomainFact.ScreeningCompleted, screeningCompletedFact.OccurredAt, previousBagLegStatus, bagLeg.Status, bagLeg.Version, ScanOutcome.Ignored, OutcomeReason.NotSupportedYet, screeningResult: screeningCompletedFact.Result);

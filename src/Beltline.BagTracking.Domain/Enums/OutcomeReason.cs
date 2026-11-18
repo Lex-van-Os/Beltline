@@ -26,7 +26,7 @@ public static class ScanOutcomeReasonExtensions
                 or OutcomeReason.NotSupportedYet => ScanOutcome.Ignored,
             OutcomeReason.CurrentStatusFinal or OutcomeReason.CurrentStatusNotOnHappyPath
                 or OutcomeReason.NotAuthorizedForLoading => ScanOutcome.Refused,
-            _ => ScanOutcome.Applied
+            _ => throw  new ArgumentOutOfRangeException(nameof(reason), reason, null)
         };
     }
 }

@@ -28,7 +28,7 @@ date the decision was actually made and state that they were recorded retrospect
 
 | # | Title | Status | Date |
 | --- | --- | --- | --- |
-| | _None yet._ | | |
+| [0001](adr/0001-forward-only-status-with-full-event-history.md) | Use a forward-only status with full event history for out-of-order and invalid input | Accepted | 2026-10-19 |
 
 ## Planned (decided, not yet written)
 
@@ -38,7 +38,6 @@ recorded as ADRs.
 - Separate the simulated world from the tracking system (simulation as environment, BagTracking as
   system under test)
 - Track status per `BagLeg` (bag × flight), not on the `Bag`
-- Use a forward-only status with full event history for out-of-order and invalid input
 - Make BagTracking the single writer of bag state; manual actions arrive as commands
 - Use at-least-once messaging with the NServiceBus Outbox (deduplication + outbox), committing
   before acknowledging
