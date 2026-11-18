@@ -11,6 +11,7 @@ public class BeltlineStateMachineTests
     private const int FlightId = 42;
     private const int OtherFlightId = 43;
     private static readonly DateTimeOffset LoadingOpenedTime = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset ScannedTime = new(2026, 11, 12, 9, 0, 0, TimeSpan.Zero);
 
     [Theory]
     [InlineData(Checkpoint.BagDrop, BagStatus.BagRegistered, BagStatus.DroppedOff)]
@@ -27,52 +28,56 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(expectedStatus);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
 
     [Theory]
-    [InlineData(Checkpoint.Induction, BagStatus.Inducted)] // Same status (duplicate scan)
-    [InlineData(Checkpoint.BagDrop, BagStatus.Sorting)] // Earlier status
-    [InlineData(Checkpoint.MakeUp, BagStatus.Loading)] // Earlier status
+    [InlineData(Checkpoint.Induction, BagStatus.Inducted, OutcomeReason.AlreadyInStatus)] // Same status (duplicate scan)
+    [InlineData(Checkpoint.BagDrop, BagStatus.Sorting, OutcomeReason.EarlierThanCurrentStatus)]
+    [InlineData(Checkpoint.MakeUp, BagStatus.Loading, OutcomeReason.EarlierThanCurrentStatus)]
     public void Apply_BagScannedWithCheckpointNotLater_LeavesBagLegUnchanged(
-        Checkpoint checkpoint, BagStatus currentStatus)
+        Checkpoint checkpoint, BagStatus currentStatus, OutcomeReason expectedReason)
     {
         // Arrange
         var bagLeg = CreateBagLeg(currentStatus);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Ignored);
+        historyEntry.Reason.ShouldBe(expectedReason);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
 
     [Theory]
-    [InlineData(BagStatus.SecurityHold)]
-    [InlineData(BagStatus.Offloading)]
-    [InlineData(BagStatus.Departed)]
-    [InlineData(BagStatus.Offloaded)]
-    [InlineData(BagStatus.Missed)]
-    [InlineData(BagStatus.Missing)]
-    public void Apply_BagScannedWithStatusOutsideHappyPath_LeavesBagLegUnchanged(BagStatus currentStatus)
+    [InlineData(BagStatus.SecurityHold, OutcomeReason.CurrentStatusNotOnHappyPath)]
+    [InlineData(BagStatus.Offloading, OutcomeReason.CurrentStatusNotOnHappyPath)]
+    [InlineData(BagStatus.Departed, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Offloaded, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Missed, OutcomeReason.CurrentStatusFinal)]
+    [InlineData(BagStatus.Missing, OutcomeReason.CurrentStatusFinal)]
+    public void Apply_BagScannedWithStatusOutsideHappyPath_LeavesBagLegUnchanged(
+        BagStatus currentStatus, OutcomeReason expectedReason)
     {
         // Arrange
         var bagLeg = CreateBagLeg(currentStatus);
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.BagDrop));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Refused);
+        historyEntry.Reason.ShouldBe(expectedReason);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -85,10 +90,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.SorterEntry));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.Sorting);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -102,10 +108,11 @@ public class BeltlineStateMachineTests
         var fact = new ScreeningStarted { TagNumber = TagNumberValue, FlightId = FlightId };
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, fact);
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, fact);
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningInProgress);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -118,10 +125,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Cleared));
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Cleared));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningCleared);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -134,10 +142,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Failed));
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(ScreeningResult.Failed));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Ignored);
+        historyEntry.Reason.ShouldBe(OutcomeReason.NotSupportedYet);
         bagLeg.Status.ShouldBe(BagStatus.ScreeningInProgress);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -151,10 +160,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp));
+        var historyEntry = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp));
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
         bagLeg.Status.ShouldBe(BagStatus.LoadAuthorized);
         bagLeg.Version.ShouldBe(previousVersion + 1);
     }
@@ -170,10 +180,11 @@ public class BeltlineStateMachineTests
         var previousVersion = bagLeg.Version;
 
         // Act
-        var changed = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(Checkpoint.LoadingPoint));
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Refused);
+        historyEntry.Reason.ShouldBe(OutcomeReason.NotAuthorizedForLoading);
         bagLeg.Status.ShouldBe(currentStatus);
         bagLeg.Version.ShouldBe(previousVersion);
     }
@@ -189,6 +200,7 @@ public class BeltlineStateMachineTests
         Should.Throw<ArgumentException>(() =>
             BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.MakeUp)));
         bagLeg.Status.ShouldBe(BagStatus.Sorting);
+        bagLeg.BagLegHistory.ShouldBeEmpty();
     }
 
     [Fact]
@@ -198,10 +210,10 @@ public class BeltlineStateMachineTests
         var flightHandling = CreateFlightHandling();
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), []);
+        var historyEntries = BagLegStateMachine.Apply(flightHandling, CreateLoadingOpened(FlightId), []);
 
         // Assert
-        changed.ShouldBeTrue();
+        historyEntries.ShouldBeEmpty();
         flightHandling.IsLoadingOpen.ShouldBeTrue();
         flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
     }
@@ -235,13 +247,14 @@ public class BeltlineStateMachineTests
         var duplicateFact = CreateLoadingOpened(FlightId, LoadingOpenedTime.AddHours(1));
 
         // Act
-        var changed = BagLegStateMachine.Apply(flightHandling, duplicateFact, [bagLeg]);
+        var historyEntries = BagLegStateMachine.Apply(flightHandling, duplicateFact, [bagLeg]);
 
         // Assert
-        changed.ShouldBeFalse();
+        historyEntries.ShouldBeEmpty();
         flightHandling.LoadingOpenedAt.ShouldBe(LoadingOpenedTime);
         bagLeg.Status.ShouldBe(BagStatus.AwaitingLoading);
         bagLeg.Version.ShouldBe(previousVersion);
+        bagLeg.BagLegHistory.ShouldBeEmpty();
     }
 
     [Fact]
@@ -271,6 +284,175 @@ public class BeltlineStateMachineTests
         flightHandling.IsLoadingOpen.ShouldBeFalse();
         bagLeg.Status.ShouldBe(BagStatus.AwaitingLoading);
         bagLeg.Version.ShouldBe(previousVersion);
+        bagLeg.BagLegHistory.ShouldBeEmpty();
+        otherFlightBagLeg.BagLegHistory.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(BagStatus.ScreeningInProgress, ScanOutcome.Ignored, OutcomeReason.AlreadyInStatus)]
+    [InlineData(BagStatus.Sorting, ScanOutcome.Ignored, OutcomeReason.EarlierThanCurrentStatus)]
+    [InlineData(BagStatus.Departed, ScanOutcome.Refused, OutcomeReason.CurrentStatusFinal)]
+    public void Apply_ScreeningStartedNotApplicable_LeavesBagLegUnchanged(
+        BagStatus currentStatus, ScanOutcome expectedOutcome, OutcomeReason expectedReason)
+    {
+        // Arrange: the forward-only rule is shared, so it also applies to facts other than scans
+        var bagLeg = CreateBagLeg(currentStatus);
+        var previousVersion = bagLeg.Version;
+        var fact = new ScreeningStarted { TagNumber = TagNumberValue, FlightId = FlightId };
+
+        // Act
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, fact);
+
+        // Assert
+        historyEntry.Outcome.ShouldBe(expectedOutcome);
+        historyEntry.Reason.ShouldBe(expectedReason);
+        bagLeg.Status.ShouldBe(currentStatus);
+        bagLeg.Version.ShouldBe(previousVersion);
+    }
+
+    [Fact]
+    public void Apply_BagScanned_RecordsHistoryEntryWithFactDetails()
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(BagStatus.Inducted);
+        var fact = CreateBagScanned(Checkpoint.SorterEntry);
+
+        // Act
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, fact);
+
+        // Assert
+        bagLeg.BagLegHistory.ShouldHaveSingleItem().ShouldBeSameAs(historyEntry);
+        historyEntry.BagLegId.ShouldBe(bagLeg.Id);
+        historyEntry.FactType.ShouldBe(DomainFact.BagScanned);
+        historyEntry.OccurredAt.ShouldBe(ScannedTime);
+        historyEntry.PreviousStatus.ShouldBe(BagStatus.Inducted);
+        historyEntry.CurrentStatus.ShouldBe(BagStatus.Sorting);
+        historyEntry.Version.ShouldBe(bagLeg.Version);
+        historyEntry.Checkpoint.ShouldBe(Checkpoint.SorterEntry);
+        historyEntry.ScreeningResult.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Apply_ScreeningStarted_RecordsHistoryEntryWithoutCheckpointOrResult()
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(BagStatus.ScreeningPending);
+        var fact = new ScreeningStarted { TagNumber = TagNumberValue, FlightId = FlightId };
+
+        // Act
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, fact);
+
+        // Assert
+        bagLeg.BagLegHistory.ShouldHaveSingleItem().ShouldBeSameAs(historyEntry);
+        historyEntry.FactType.ShouldBe(DomainFact.ScreeningStarted);
+        historyEntry.Checkpoint.ShouldBeNull();
+        historyEntry.ScreeningResult.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(ScreeningResult.Cleared, BagStatus.ScreeningCleared)]
+    [InlineData(ScreeningResult.Failed, BagStatus.ScreeningInProgress)] // Recorded, but does not change the bag yet
+    public void Apply_ScreeningCompleted_RecordsHistoryEntryWithScreeningResult(
+        ScreeningResult result, BagStatus expectedStatus)
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(BagStatus.ScreeningInProgress);
+
+        // Act
+        var historyEntry = BagLegStateMachine.Apply(bagLeg, CreateScreeningCompleted(result));
+
+        // Assert
+        bagLeg.BagLegHistory.ShouldHaveSingleItem().ShouldBeSameAs(historyEntry);
+        historyEntry.FactType.ShouldBe(DomainFact.ScreeningCompleted);
+        historyEntry.PreviousStatus.ShouldBe(BagStatus.ScreeningInProgress);
+        historyEntry.CurrentStatus.ShouldBe(expectedStatus);
+        historyEntry.ScreeningResult.ShouldBe(result);
+        historyEntry.Checkpoint.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(Checkpoint.Induction, BagStatus.Inducted)] // Ignored
+    [InlineData(Checkpoint.LoadingPoint, BagStatus.Sorting)] // Refused
+    [InlineData(Checkpoint.BagDrop, BagStatus.Departed)] // Refused
+    public void Apply_BagScannedNotApplied_StillRecordsHistoryEntry(Checkpoint checkpoint, BagStatus currentStatus)
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(currentStatus);
+        var previousVersion = bagLeg.Version;
+
+        // Act
+        var historyEntry = BagLegStateMachine.Apply(CreateFlightHandling(), bagLeg, CreateBagScanned(checkpoint));
+
+        // Assert
+        bagLeg.BagLegHistory.ShouldHaveSingleItem().ShouldBeSameAs(historyEntry);
+        historyEntry.PreviousStatus.ShouldBe(currentStatus);
+        historyEntry.CurrentStatus.ShouldBe(currentStatus);
+        historyEntry.Version.ShouldBe(previousVersion);
+    }
+
+    [Fact]
+    public void Apply_SeveralFacts_AppendsHistoryEntriesInOrder()
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(BagStatus.BagRegistered);
+        var flightHandling = CreateFlightHandling();
+
+        // Act
+        BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.BagDrop, ScannedTime));
+        BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.Induction, ScannedTime.AddMinutes(5)));
+        var lastHistoryEntry = BagLegStateMachine.Apply(flightHandling, bagLeg,
+            CreateBagScanned(Checkpoint.ScreeningEntry, ScannedTime.AddMinutes(10)));
+
+        // Assert
+        bagLeg.BagLegHistory.Select(historyEntry => historyEntry.Checkpoint)
+            .ShouldBe([Checkpoint.BagDrop, Checkpoint.Induction, Checkpoint.ScreeningEntry]);
+        bagLeg.BagLegHistory.Select(historyEntry => historyEntry.OccurredAt)
+            .ShouldBe([ScannedTime, ScannedTime.AddMinutes(5), ScannedTime.AddMinutes(10)]);
+        bagLeg.BagLegHistory.Select(historyEntry => historyEntry.Version).ShouldBe([2, 3, 4]);
+        bagLeg.BagLegHistory[^1].ShouldBeSameAs(lastHistoryEntry);
+    }
+
+    [Fact]
+    public void Apply_SameBagScannedTwice_RecordsBothHistoryEntries()
+    {
+        // Arrange
+        var bagLeg = CreateBagLeg(BagStatus.DroppedOff);
+        var flightHandling = CreateFlightHandling();
+
+        // Act
+        var firstHistoryEntry = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.Induction));
+        var secondHistoryEntry = BagLegStateMachine.Apply(flightHandling, bagLeg, CreateBagScanned(Checkpoint.Induction));
+
+        // Assert
+        bagLeg.BagLegHistory.ShouldBe([firstHistoryEntry, secondHistoryEntry]);
+        firstHistoryEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        secondHistoryEntry.Outcome.ShouldBe(ScanOutcome.Ignored);
+        secondHistoryEntry.Reason.ShouldBe(OutcomeReason.AlreadyInStatus);
+        secondHistoryEntry.Version.ShouldBe(firstHistoryEntry.Version);
+    }
+
+    [Fact]
+    public void Apply_LoadingOpened_RecordsHistoryEntryOnlyForAuthorizedBags()
+    {
+        // Arrange
+        var awaitingBagLeg = CreateBagLeg(BagStatus.AwaitingLoading);
+        var sortingBagLeg = CreateBagLeg(BagStatus.Sorting);
+
+        // Act
+        var historyEntries = BagLegStateMachine.Apply(CreateFlightHandling(), CreateLoadingOpened(FlightId),
+            [awaitingBagLeg, sortingBagLeg]);
+
+        // Assert
+        var historyEntry = historyEntries.ShouldHaveSingleItem();
+        awaitingBagLeg.BagLegHistory.ShouldHaveSingleItem().ShouldBeSameAs(historyEntry);
+        sortingBagLeg.BagLegHistory.ShouldBeEmpty();
+        historyEntry.BagLegId.ShouldBe(awaitingBagLeg.Id);
+        historyEntry.FactType.ShouldBe(DomainFact.LoadingOpened);
+        historyEntry.OccurredAt.ShouldBe(LoadingOpenedTime);
+        historyEntry.PreviousStatus.ShouldBe(BagStatus.AwaitingLoading);
+        historyEntry.CurrentStatus.ShouldBe(BagStatus.LoadAuthorized);
+        historyEntry.Outcome.ShouldBe(ScanOutcome.Applied);
+        historyEntry.Reason.ShouldBe(OutcomeReason.None);
     }
 
     // Puts the BagLeg directly in the given status, so each test starts from a known point
@@ -299,8 +481,8 @@ public class BeltlineStateMachineTests
     private static LoadingOpened CreateLoadingOpened(int flightId, DateTimeOffset? occurredAt = null) =>
         new() { FlightId = flightId, OccurredAt = occurredAt ?? LoadingOpenedTime };
 
-    private static BagScanned CreateBagScanned(Checkpoint checkpoint) =>
-        new() { TagNumber = TagNumberValue, FlightId = FlightId, Checkpoint = checkpoint };
+    private static BagScanned CreateBagScanned(Checkpoint checkpoint, DateTimeOffset? occurredAt = null) =>
+        new() { TagNumber = TagNumberValue, FlightId = FlightId, Checkpoint = checkpoint, OccurredAt = occurredAt ?? ScannedTime };
 
     private static ScreeningCompleted CreateScreeningCompleted(ScreeningResult result) =>
         new() { TagNumber = TagNumberValue, FlightId = FlightId, Result = result };

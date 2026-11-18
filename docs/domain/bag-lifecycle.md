@@ -11,7 +11,7 @@ Keep this document up to date in the pull request of every issue that changes th
 
 - **Forward-only.** A fact is only applied when its status comes later in the happy path than the
   current status. Earlier or equal facts (out-of-order or duplicate messages) leave the bag
-  unchanged.
+  unchanged, but are still recorded (see [Outcomes and history](#outcomes-and-history)).
 - **Skipping is allowed.** A missed scan must not block a bag: a later fact moves the bag forward
   past the statuses in between. The diagram does not draw these skip arrows.
   **Exception:** a bag can only reach `Loading` from `LoadAuthorized`. No unauthorized bag may end up
@@ -128,12 +128,92 @@ flowchart LR
 
 `BagRegistered` is not caused by a fact: it is the starting status of every new `BagLeg`.
 
+## Outcomes and history
+
+Every fact that reaches a bag is recorded, whether or not it changed the status. Nothing is
+silently dropped: an ignored or refused fact stays visible to operators and for debugging. The
+reasoning behind this is recorded in
+[ADR 0001](../architecture/adr/0001-forward-only-status-with-full-event-history.md).
+
+### Outcomes
+
+Each fact gets exactly one outcome:
+
+| Outcome | Meaning | Status and version |
+| --- | --- | --- |
+| `Applied` | The status moved forward. | Status changes, version + 1 |
+| `Ignored` | Harmless and expected: an earlier or repeated fact, or a fact that is not supported yet. | Unchanged |
+| `Refused` | Not allowed in the bag's current state. Worth attention, e.g. an unauthorized loading scan. | Unchanged |
+
+### Reasons
+
+An entry that is not `Applied` carries a reason. Every reason belongs to exactly one outcome, so
+the outcome is derived from the reason and an entry can never contradict itself.
+
+| Reason | Outcome | Example |
+| --- | --- | --- |
+| `None` | `Applied` | `BagScanned(SorterEntry)` for an `Inducted` bag (skipping is allowed) |
+| `EarlierThanCurrentStatus` | `Ignored` | A delayed `BagScanned(BagDrop)` for a bag that is already `Sorting` |
+| `AlreadyInStatus` | `Ignored` | A second `BagScanned(Induction)` for an `Inducted` bag |
+| `NotSupportedYet` | `Ignored` | `ScreeningCompleted(Failed)`: `SecurityHold` is not implemented yet |
+| `CurrentStatusFinal` | `Refused` | Any fact for a bag that has `Departed` |
+| `CurrentStatusNotOnHappyPath` | `Refused` | A scan for a bag in `SecurityHold` or `Offloading` |
+| `NotAuthorizedForLoading` | `Refused` | `BagScanned(LoadingPoint)` for a bag that is not `LoadAuthorized` |
+
+The checks run in this order; the first one that matches decides the outcome:
+
+```mermaid
+flowchart TD
+    Fact[Fact mapped to a target status] --> Final{Current status final?}
+    Final -->|yes| RefusedFinal[Refused: CurrentStatusFinal]
+    Final -->|no| Earlier{Target earlier than current?}
+    Earlier -->|yes| IgnoredEarlier[Ignored: EarlierThanCurrentStatus]
+    Earlier -->|no| Same{Target equals current?}
+    Same -->|yes| IgnoredSame[Ignored: AlreadyInStatus]
+    Same -->|no| OffPath{Current status off the happy path?}
+    OffPath -->|yes| RefusedOffPath[Refused: CurrentStatusNotOnHappyPath]
+    OffPath -->|no| Loading{Target Loading, current not LoadAuthorized?}
+    Loading -->|yes| RefusedLoading[Refused: NotAuthorizedForLoading]
+    Loading -->|no| Applied[Applied: status moves forward]
+```
+
+`ScreeningCompleted(Failed)` does not go through these checks: it is recorded as `Ignored` with
+`NotSupportedYet` until `SecurityHold` is implemented.
+
+### History entries
+
+Each recorded fact becomes an immutable `BagLegHistoryEntry` on the `BagLeg`. Entries are only
+appended, in the order the facts are applied, and the history can only be read from outside the
+domain.
+
+| Field | Content |
+| --- | --- |
+| `BagLegId` | The bag leg the entry belongs to |
+| `FactType` | `BagScanned`, `ScreeningStarted`, `ScreeningCompleted` or `LoadingOpened` |
+| `OccurredAt` | When the fact happened in the simulated world (not when it was processed) |
+| `PreviousStatus`, `CurrentStatus` | The status before and after the fact (equal when not applied) |
+| `Version` | The bag leg's version after the fact |
+| `Outcome`, `Reason` | See above |
+| `Checkpoint` | Only for `BagScanned` |
+| `ScreeningResult` | Only for `ScreeningCompleted` |
+
+A few cases work differently:
+
+- **`LoadingOpened`** is a flight-level fact. It adds an entry only to the bags it authorizes (from
+  `AwaitingLoading` to `LoadAuthorized`); other bags of the flight get no entry. A repeated
+  `LoadingOpened` for a flight that is already open records nothing.
+- **Repeated facts** each get their own entry. True duplicate messages are filtered before the
+  domain (inbox), and the simulation debounces scans, so this stays limited.
+- **Caller bugs are not outcomes.** A fact or bag that belongs to a different flight throws an
+  exception and records nothing.
+
 ## Implementation status
 
 | Part | Status |
 | --- | --- |
 | Happy path from `BagRegistered` to `AwaitingLoading`, and `LoadingPoint` → `Loading` | Implemented (#7) |
 | `LoadingOpened`, `LoadAuthorized`, and loading only from `LoadAuthorized` | Implemented (#8) |
+| Outcomes, reasons and history entries for every fact | Implemented (#13) |
 | `ConfirmLoaded` → `Loaded` | Planned |
 | `SecurityHold` and its resolution | Planned |
 | `Offloading` → `Offloaded` | Planned |

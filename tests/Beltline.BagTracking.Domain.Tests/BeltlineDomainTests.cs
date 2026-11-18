@@ -52,6 +52,7 @@ public class BeltlineDomainTests
         bagLeg.Id.Version.ShouldBe(7);
         bagLeg.TagNumber.ShouldBe(tagNumber);
         bagLeg.FlightId.ShouldBe(flightId);
+        bagLeg.BagLegHistory.ShouldBeEmpty();
     }
 
     // The only statuses that end a bag's journey; every other status is derived from this list
@@ -76,5 +77,29 @@ public class BeltlineDomainTests
     {
         // Act and assert
         nonFinalStatus.IsFinal().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(OutcomeReason.None, ScanOutcome.Applied)]
+    [InlineData(OutcomeReason.EarlierThanCurrentStatus, ScanOutcome.Ignored)]
+    [InlineData(OutcomeReason.AlreadyInStatus, ScanOutcome.Ignored)]
+    [InlineData(OutcomeReason.NotSupportedYet, ScanOutcome.Ignored)]
+    [InlineData(OutcomeReason.CurrentStatusFinal, ScanOutcome.Refused)]
+    [InlineData(OutcomeReason.CurrentStatusNotOnHappyPath, ScanOutcome.Refused)]
+    [InlineData(OutcomeReason.NotAuthorizedForLoading, ScanOutcome.Refused)]
+    public void OutcomeReason_ToOutcome_ReturnsMatchingOutcome(OutcomeReason reason, ScanOutcome expectedOutcome)
+    {
+        // Act and assert
+        reason.ToOutcome().ShouldBe(expectedOutcome);
+    }
+
+    [Fact]
+    public void OutcomeReason_ToOutcomeWithUnknownValue_ThrowsArgumentOutOfRangeException()
+    {
+        // Arrange: a value that is not defined in the enum, e.g. read from a corrupt database row
+        var unknownReason = (OutcomeReason)99;
+
+        // Act and assert
+        Should.Throw<ArgumentOutOfRangeException>(() => unknownReason.ToOutcome());
     }
 }
