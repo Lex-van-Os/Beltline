@@ -25,9 +25,16 @@ public class BagLeg
 
     public int Version { get; private set; }
 
+    private List<BagLegHistoryEntry> BagLegHistory { get; } = [];
+
     internal void ChangeStatus(BagStatus bagStatus)
     {
         this.Status = bagStatus;
         this.Version++;
+    }
+
+    internal void AddBagLegHistoryEntry(BagLegHistoryEntry bagLegHistoryEntry)
+    {
+        BagLegHistory.Add(bagLegHistoryEntry);
     }
 }
