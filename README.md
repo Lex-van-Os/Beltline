@@ -108,4 +108,54 @@ flowchart LR
 
 ## Getting started
 
-Not available yet. Instructions follow once the first runnable components are in place.
+### Prerequisites
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [Docker](https://docs.docker.com/get-started/get-docker/) with Docker Compose v2
+
+### Build and test
+
+```bash
+dotnet build Beltline.slnx
+dotnet test --solution Beltline.slnx
+```
+
+### Local infrastructure
+
+RabbitMQ, PostgreSQL and Adminer (a web UI for the database) run in Docker Compose. The applications
+run outside Compose with `dotnet run`, so they can be debugged from the IDE without rebuilding an
+image.
+
+1. Copy the example environment file and fill in your own credentials. `.env` is ignored by git.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Start the infrastructure and wait until every service is healthy:
+
+   ```bash
+   docker compose up -d --wait
+   ```
+
+| Service | Address | Credentials |
+| --- | --- | --- |
+| RabbitMQ (AMQP) | `localhost:5672` | `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` |
+| RabbitMQ management UI | <http://localhost:15672> | `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` |
+| PostgreSQL (database `bagtracking`) | `localhost:5432` | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
+| Adminer | <http://localhost:8080> | See below |
+
+Adminer is a lightweight web UI for browsing and querying the database during development. To log
+in, choose **PostgreSQL** as the system and use database `bagtracking` with the PostgreSQL
+credentials from `.env`. The server is already filled in as `postgresql`: the Compose service name,
+since Adminer runs inside the Compose network.
+
+All ports are bound to `127.0.0.1`, so the services are only reachable from your own machine.
+
+### Stop and reset
+
+| Command | Effect |
+| --- | --- |
+| `docker compose stop` | Stops the containers; everything is kept |
+| `docker compose down` | Removes the containers; the data in the volumes is kept |
+| `docker compose down -v` | Removes the containers **and all data** (fresh start) |
