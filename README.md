@@ -145,9 +145,10 @@ image.
 | PostgreSQL (database `bagtracking`) | `localhost:5432` | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
 | Adminer | <http://localhost:8080> | See below |
 
-To log in to Adminer, choose **PostgreSQL** as the system, enter `postgresql` as the server (the
-Compose service name, since Adminer runs inside the Compose network), and use database
-`bagtracking` with the PostgreSQL credentials from `.env`.
+Adminer is a lightweight web UI for browsing and querying the database during development. To log
+in, choose **PostgreSQL** as the system and use database `bagtracking` with the PostgreSQL
+credentials from `.env`. The server is already filled in as `postgresql`: the Compose service name,
+since Adminer runs inside the Compose network.
 
 All ports are bound to `127.0.0.1`, so the services are only reachable from your own machine.
 
