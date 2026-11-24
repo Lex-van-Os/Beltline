@@ -29,6 +29,7 @@ date the decision was actually made and state that they were recorded retrospect
 | # | Title | Status | Date |
 | --- | --- | --- | --- |
 | [0001](adr/0001-forward-only-status-with-full-event-history.md) | Use a forward-only status with full event history for out-of-order and invalid input | Accepted | 2026-10-19 |
+| [0002](adr/0002-identify-messages-with-nservicebus-marker-interfaces.md) | Identify messages with the NServiceBus marker interfaces | Accepted | 2026-11-24 |
 
 ## Planned (decided, not yet written)
 

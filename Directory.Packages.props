@@ -5,6 +5,16 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <!-- Hosting -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- Messaging -->
+  <ItemGroup>
+    <PackageVersion Include="NServiceBus.MessageInterfaces" Version="1.0.0" />
+  </ItemGroup>
+
   <!-- Testing -->
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />

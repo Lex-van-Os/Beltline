@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Only the marker interfaces (ICommand, IEvent), not the NServiceBus core package: see ADR 0002. -->
+  <ItemGroup>
+    <PackageReference Include="NServiceBus.MessageInterfaces" />
+  </ItemGroup>
+
+</Project>

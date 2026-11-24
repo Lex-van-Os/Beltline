@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Beltline.BagTracking.Domain/Beltline.BagTracking.Domain.csproj" />
+    <Project Path="src/Beltline.Contracts/Beltline.Contracts.csproj" />
+    <Project Path="src/Beltline.Messaging/Beltline.Messaging.csproj" />
+    <Project Path="src/Beltline.Simulation/Beltline.Simulation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Beltline.BagTracking.Domain.Tests/Beltline.BagTracking.Domain.Tests.csproj" />
