@@ -1,41 +1,50 @@
+name: beltline
+
 services:
-  rabbbitmq:
+  rabbitmq:
     image: rabbitmq:4.3.8-management
     container_name: rabbitmq
-    restart: always
+    hostname: rabbitmq
+    restart: unless-stopped
     ports:
-      - 5672:5672
-      - 15672:15672
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=testuser
-      - RABBITMQ_DEFAULT_PASS=testuserpass
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:?set RABBITMQ_DEFAULT_USER in .env}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      start_period: 10s
       interval: 10s
+      timeout: 5s
       retries: 5
 
   postgresql:
-    image: postgres:15.20
-    container_name: bagtracking
-    restart: always
+    image: postgres:19
+    restart: unless-stopped
     shm_size: 128mb
     environment:
-      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=bagtracking
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - POSTGRES_USER=${POSTGRES_USER:?set POSTGRES_USER in .env}
     volumes:
       - bagtracking-data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready" ]
-      interval: 1s
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      start_period: 10s
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+    ports:
+      - "127.0.0.1:5432:5432"
 
   adminer:
     image: adminer:6.3.0
-    restart: always
+    restart: unless-stopped
     ports:
-      - 8080:8080
+      - "127.0.0.1:8080:8080"
 
 volumes:
   rabbitmq-data:
